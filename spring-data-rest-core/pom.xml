@@ -16,8 +16,9 @@
 	</parent>
 
 	<properties>
-		<springplugin>1.2.0.RELEASE</springplugin>
+		<springplugin>2.0.0.BUILD-SNAPSHOT</springplugin>
 		<evoinflector>1.2.2</evoinflector>
+		<spring-hateoas>1.0.0.SDR-SNAPSHOT</spring-hateoas>
 		<java-module-name>spring.data.rest.core</java-module-name>
 		<project.root>${basedir}/..</project.root>
 	</properties>

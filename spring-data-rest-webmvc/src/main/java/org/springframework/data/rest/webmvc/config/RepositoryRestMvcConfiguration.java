@@ -15,6 +15,9 @@
  */
 package org.springframework.data.rest.webmvc.config;
 
+import static org.springframework.hateoas.collectionjson.Jackson2CollectionJsonModule.*;
+import static org.springframework.hateoas.hal.forms.Jackson2HalFormsModule.*;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -92,17 +95,8 @@ import org.springframework.data.rest.webmvc.ServerHttpRequestMethodArgumentResol
 import org.springframework.data.rest.webmvc.alps.AlpsJsonHttpMessageConverter;
 import org.springframework.data.rest.webmvc.alps.RootResourceInformationToAlpsDescriptorConverter;
 import org.springframework.data.rest.webmvc.convert.UriListHttpMessageConverter;
-import org.springframework.data.rest.webmvc.json.DomainObjectReader;
-import org.springframework.data.rest.webmvc.json.EnumTranslator;
-import org.springframework.data.rest.webmvc.json.Jackson2DatatypeHelper;
-import org.springframework.data.rest.webmvc.json.JacksonMappingAwareSortTranslator;
-import org.springframework.data.rest.webmvc.json.JacksonSerializers;
-import org.springframework.data.rest.webmvc.json.MappingAwareDefaultedPageableArgumentResolver;
-import org.springframework.data.rest.webmvc.json.MappingAwarePageableArgumentResolver;
-import org.springframework.data.rest.webmvc.json.MappingAwareSortArgumentResolver;
-import org.springframework.data.rest.webmvc.json.PersistentEntityJackson2Module;
+import org.springframework.data.rest.webmvc.json.*;
 import org.springframework.data.rest.webmvc.json.PersistentEntityJackson2Module.LookupObjectSerializer;
-import org.springframework.data.rest.webmvc.json.PersistentEntityToJsonSchemaConverter;
 import org.springframework.data.rest.webmvc.json.PersistentEntityToJsonSchemaConverter.ValueTypeSchemaPropertyCustomizerFactory;
 import org.springframework.data.rest.webmvc.mapping.Associations;
 import org.springframework.data.rest.webmvc.mapping.LinkCollector;
@@ -131,6 +125,7 @@ import org.springframework.hateoas.MediaTypes;
 import org.springframework.hateoas.RelProvider;
 import org.springframework.hateoas.ResourceProcessor;
 import org.springframework.hateoas.ResourceSupport;
+import org.springframework.hateoas.collectionjson.Jackson2CollectionJsonModule;
 import org.springframework.hateoas.config.EnableHypermediaSupport;
 import org.springframework.hateoas.config.EnableHypermediaSupport.HypermediaType;
 import org.springframework.hateoas.core.EvoInflectorRelProvider;
@@ -138,6 +133,8 @@ import org.springframework.hateoas.hal.CurieProvider;
 import org.springframework.hateoas.hal.HalConfiguration;
 import org.springframework.hateoas.hal.Jackson2HalModule;
 import org.springframework.hateoas.hal.Jackson2HalModule.HalHandlerInstantiator;
+import org.springframework.hateoas.hal.forms.HalFormsConfiguration;
+import org.springframework.hateoas.hal.forms.Jackson2HalFormsModule;
 import org.springframework.hateoas.mvc.ResourceProcessorInvoker;
 import org.springframework.hateoas.mvc.TypeConstrainedMappingJackson2HttpMessageConverter;
 import org.springframework.http.MediaType;
@@ -176,7 +173,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
  * @author Mark Paluch
  */
 @Configuration
-@EnableHypermediaSupport(type = HypermediaType.HAL)
+@EnableHypermediaSupport(type = {HypermediaType.HAL, HypermediaType.HAL_FORMS, HypermediaType.COLLECTION_JSON})
 @ComponentScan(basePackageClasses = RepositoryRestController.class,
 		includeFilters = @Filter(BasePathAwareController.class), useDefaultFilters = false)
 @ImportResource("classpath*:META-INF/spring-data-rest/**/*.xml")
@@ -501,7 +498,7 @@ public class RepositoryRestMvcConfiguration extends HateoasAwareSpringDataWebCon
 			mediaTypes.add(MediaType.APPLICATION_JSON);
 		}
 
-		int order = repositoryRestConfiguration().useHalAsDefaultJsonMediaType() ? Ordered.LOWEST_PRECEDENCE - 1
+		int order = repositoryRestConfiguration().useHalAsDefaultJsonMediaType() ? Ordered.LOWEST_PRECEDENCE - 9
 				: Ordered.LOWEST_PRECEDENCE - 10;
 
 		mediaTypes.addAll(Arrays.asList(RestMediaTypes.SCHEMA_JSON, //
@@ -532,7 +529,7 @@ public class RepositoryRestMvcConfiguration extends HateoasAwareSpringDataWebCon
 		}
 
 		int order = repositoryRestConfiguration().useHalAsDefaultJsonMediaType() ? Ordered.LOWEST_PRECEDENCE - 10
-				: Ordered.LOWEST_PRECEDENCE - 1;
+				: Ordered.LOWEST_PRECEDENCE - 9;
 
 		TypeConstrainedMappingJackson2HttpMessageConverter converter = new ResourceSupportHttpMessageConverter(order);
 		converter.setObjectMapper(halObjectMapper());
@@ -543,8 +540,8 @@ public class RepositoryRestMvcConfiguration extends HateoasAwareSpringDataWebCon
 
 	public ObjectMapper halObjectMapper() {
 
-		RelProvider defaultedRelProvider = this.relProvider.orElseGet(() -> new EvoInflectorRelProvider());
-		HalConfiguration halConfiguration = this.halConfiguration.orElseGet(() -> new HalConfiguration());
+		RelProvider defaultedRelProvider = this.relProvider.orElseGet(EvoInflectorRelProvider::new);
+		HalConfiguration halConfiguration = this.halConfiguration.orElseGet(HalConfiguration::new);
 
 		HalHandlerInstantiator instantiator = new HalHandlerInstantiator(defaultedRelProvider, curieProvider.orElse(null),
 				resourceDescriptionMessageSourceAccessor(), halConfiguration);
@@ -557,6 +554,66 @@ public class RepositoryRestMvcConfiguration extends HateoasAwareSpringDataWebCon
 		return mapper;
 	}
 
+	// HAL-FORMS setup
+
+	@Bean
+	public TypeConstrainedMappingJackson2HttpMessageConverter halFormsJacksonHttpMessageConverter() {
+
+		ArrayList<MediaType> mediaTypes = new ArrayList<>();
+		mediaTypes.add(MediaTypes.HAL_FORMS_JSON);
+
+		int order = Ordered.LOWEST_PRECEDENCE - 8;
+		TypeConstrainedMappingJackson2HttpMessageConverter converter = new ResourceSupportHttpMessageConverter(order);
+		converter.setObjectMapper(halFormsObjectMapper());
+		converter.setSupportedMediaTypes(mediaTypes);
+
+		return converter;
+	}
+
+	public ObjectMapper halFormsObjectMapper() {
+
+		RelProvider defaultedRelProvider = this.relProvider.orElse(new EvoInflectorRelProvider());
+
+		HalFormsHandlerInstantiator instantiator = new HalFormsHandlerInstantiator(defaultedRelProvider, curieProvider.orElse(null),
+			resourceDescriptionMessageSourceAccessor(), true, new HalFormsConfiguration());
+
+		ObjectMapper mapper = basicObjectMapper();
+		mapper.registerModule(new Jackson2HalFormsModule());
+		mapper.registerModule(persistentEntityJackson2Module());
+		mapper.setHandlerInstantiator(instantiator);
+
+		return mapper;
+	}
+
+	// Collection+JSON setup
+
+	@Bean
+	public TypeConstrainedMappingJackson2HttpMessageConverter collectionJsonJacksonHttpMessageConverter() {
+
+		ArrayList<MediaType> mediaTypes = new ArrayList<>();
+		mediaTypes.add(MediaTypes.COLLECTION_JSON);
+
+		int order = Ordered.LOWEST_PRECEDENCE - 7;
+		TypeConstrainedMappingJackson2HttpMessageConverter converter = new ResourceSupportHttpMessageConverter(order);
+		converter.setObjectMapper(collectionJsonObjectMapper());
+		converter.setSupportedMediaTypes(mediaTypes);
+
+		return converter;
+	}
+
+	public ObjectMapper collectionJsonObjectMapper() {
+
+		CollectionJsonHandlerInstantiator instantiator = new CollectionJsonHandlerInstantiator(
+			resourceDescriptionMessageSourceAccessor());
+
+		ObjectMapper mapper = basicObjectMapper();
+		mapper.registerModule(new Jackson2CollectionJsonModule());
+		mapper.registerModule(persistentEntityJackson2Module());
+		mapper.setHandlerInstantiator(instantiator);
+
+		return mapper;
+	}
+	
 	/**
 	 * The {@link HttpMessageConverter} used to create {@literal text/uri-list} responses.
 	 *
@@ -742,6 +799,9 @@ public class RepositoryRestMvcConfiguration extends HateoasAwareSpringDataWebCon
 			messageConverters.add(jacksonHttpMessageConverter());
 			messageConverters.add(halJacksonHttpMessageConverter());
 		}
+
+		messageConverters.add(halFormsJacksonHttpMessageConverter());
+		messageConverters.add(collectionJsonJacksonHttpMessageConverter());
 
 		MappingJackson2HttpMessageConverter fallbackJsonConverter = new MappingJackson2HttpMessageConverter();
 		fallbackJsonConverter.setObjectMapper(basicObjectMapper());
